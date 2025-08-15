@@ -1,0 +1,53 @@
+server:
+  port: 8888
+  shutdown: graceful
+  max-http-request-header-size: 8KB
+
+spring:
+  application:
+    name: RateLimitApiGateway
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: smartBill
+              uri: http://localhost:8082/
+              predicates:
+                - Path=/internal/api/bin
+              filters:
+                - name: JsonRateLimiter
+                  args:
+                    limit: 3
+                    windowSeconds: 3600
+                    statusCode: 429
+                    requireIntegratorId: true
+                    missingIntegratorStatus: 406
+                    missingIntegratorCode: "INTEGRATOR_ID_REQUIRED"
+                    missingIntegratorMessage: "Header X-Real-IP is required"
+                    failedCode: "TO_MANY_REQUESTS"
+                    failedMessage: "Try making a request after some time"
+
+                - name: ResponseCache
+                  args:
+                    ttlSeconds: 60
+                    maxBytes: 262144 # 256 KB
+                    only200: true
+                    jsonOnly: true
+                    addCacheHeader: true
+                    keyByIntegrator: true
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: gateway,health,info
+
+logging:
+  level:
+    org.springframework.cloud.gateway.handler.FilteringWebHandler: DEBUG
